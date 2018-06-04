@@ -118,7 +118,10 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 			Header: header,
 			Body:   msg.Body,
 		}
-		handler(&publication{d: msg, m: m, t: msg.RoutingKey})
+		err := handler(&publication{d: msg, m: m, t: msg.RoutingKey})
+		if err != nil && !opt.AutoAck {
+			msg.Nack(false, true)
+		}
 	}
 
 	go func() {
@@ -166,6 +169,7 @@ func (r *rbroker) Disconnect() error {
 	return r.conn.Close()
 }
 
+// NewBroker creates new rabbitmq broker
 func NewBroker(opts ...broker.Option) broker.Broker {
 	options := broker.Options{
 		Context: context.Background(),
@@ -185,5 +189,5 @@ func (r *rbroker) getExchange() string {
 	if e, ok := r.opts.Context.Value(exchangeKey{}).(string); ok {
 		return e
 	}
-	return DefaultExchange
+	return defaultExchange
 }

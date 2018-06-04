@@ -7,7 +7,7 @@ package rabbitmq
 import (
 	"errors"
 
-	"github.com/nu7hatch/gouuid"
+	"github.com/pborman/uuid"
 	"github.com/streadway/amqp"
 )
 
@@ -18,12 +18,8 @@ type rabbitMQChannel struct {
 }
 
 func newRabbitChannel(conn *amqp.Connection) (*rabbitMQChannel, error) {
-	id, err := uuid.NewV4()
-	if err != nil {
-		return nil, err
-	}
 	rabbitCh := &rabbitMQChannel{
-		uuid:       id.String(),
+		uuid:       uuid.NewRandom().String(),
 		connection: conn,
 	}
 	if err := rabbitCh.Connect(); err != nil {
@@ -36,22 +32,19 @@ func newRabbitChannel(conn *amqp.Connection) (*rabbitMQChannel, error) {
 func (r *rabbitMQChannel) Connect() error {
 	var err error
 	r.channel, err = r.connection.Channel()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (r *rabbitMQChannel) Close() error {
 	if r.channel == nil {
-		return errors.New("Channel is nil")
+		return errors.New("channel is nil")
 	}
 	return r.channel.Close()
 }
 
 func (r *rabbitMQChannel) Publish(exchange, key string, message amqp.Publishing) error {
 	if r.channel == nil {
-		return errors.New("Channel is nil")
+		return errors.New("channel is nil")
 	}
 	return r.channel.Publish(exchange, key, false, false, message)
 }
@@ -68,36 +61,12 @@ func (r *rabbitMQChannel) DeclareExchange(exchange string) error {
 	)
 }
 
-func (r *rabbitMQChannel) DeclareQueue(queue string) error {
+func (r *rabbitMQChannel) DeclareQueue(queue string, durable bool) error {
 	_, err := r.channel.QueueDeclare(
 		queue, // name
-		false, // durable
-		true,  // autoDelete
+		durable, // durable
+		!durable,  // autoDelete
 		false, // exclusive
-		false, // noWait
-		nil,   // args
-	)
-	return err
-}
-
-func (r *rabbitMQChannel) DeclareDurableQueue(queue string) error {
-	_, err := r.channel.QueueDeclare(
-		queue, // name
-		true,  // durable
-		false, // autoDelete
-		false, // exclusive
-		false, // noWait
-		nil,   // args
-	)
-	return err
-}
-
-func (r *rabbitMQChannel) DeclareReplyQueue(queue string) error {
-	_, err := r.channel.QueueDeclare(
-		queue, // name
-		false, // durable
-		true,  // autoDelete
-		true,  // exclusive
 		false, // noWait
 		nil,   // args
 	)

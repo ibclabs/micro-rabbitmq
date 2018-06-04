@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	DefaultExchange  = "micro"
-	DefaultRabbitURL = "amqp://guest:guest@127.0.0.1:5672"
+	defaultExchange  = "micro"
+	defaultRabbitURL = "amqp://guest:guest@127.0.0.1:5672"
 
 	dial    = amqp.Dial
 	dialTLS = amqp.DialTLS
@@ -40,11 +40,11 @@ func newRabbitMQConn(exchange string, urls []string) *rabbitMQConn {
 	if len(urls) > 0 && regexp.MustCompile("^amqp(s)?://.*").MatchString(urls[0]) {
 		url = urls[0]
 	} else {
-		url = DefaultRabbitURL
+		url = defaultRabbitURL
 	}
 
 	if len(exchange) == 0 {
-		exchange = DefaultExchange
+		exchange = defaultExchange
 	}
 
 	return &rabbitMQConn{
@@ -166,7 +166,11 @@ func (r *rabbitMQConn) tryConnect(secure bool, config *tls.Config) error {
 		return err
 	}
 
-	r.Channel.DeclareExchange(r.exchange)
+	err = r.Channel.DeclareExchange(r.exchange)
+	if err != nil {
+		return err
+	}
+
 	r.ExchangeChannel, err = newRabbitChannel(r.Connection)
 
 	return err
@@ -178,12 +182,7 @@ func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, d
 		return nil, nil, err
 	}
 
-	if durableQueue {
-		err = consumerChannel.DeclareDurableQueue(queue)
-	} else {
-		err = consumerChannel.DeclareQueue(queue)
-	}
-
+	err = consumerChannel.DeclareQueue(queue, durableQueue)
 	if err != nil {
 		return nil, nil, err
 	}
