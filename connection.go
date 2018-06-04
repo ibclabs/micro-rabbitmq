@@ -22,11 +22,10 @@ var (
 	dialTLS = amqp.DialTLS
 )
 
-type rabbitMQConn struct {
+type rmqConnection struct {
 	Connection      *amqp.Connection
-	Channel         *rabbitMQChannel
-	ExchangeChannel *rabbitMQChannel
-	exchange        string
+	Channel         *rmqChannel
+	exchange        rmqExchange
 	url             string
 
 	sync.Mutex
@@ -34,7 +33,12 @@ type rabbitMQConn struct {
 	close     chan bool
 }
 
-func newRabbitMQConn(exchange string, urls []string) *rabbitMQConn {
+type rmqExchange struct {
+	Name string
+	Durable bool
+}
+
+func newRabbitConnection(exchange rmqExchange, urls []string) *rmqConnection {
 	var url string
 
 	if len(urls) > 0 && regexp.MustCompile("^amqp(s)?://.*").MatchString(urls[0]) {
@@ -43,18 +47,18 @@ func newRabbitMQConn(exchange string, urls []string) *rabbitMQConn {
 		url = defaultRabbitURL
 	}
 
-	if len(exchange) == 0 {
-		exchange = defaultExchange
+	if len(exchange.Name) == 0 {
+		exchange.Name = defaultExchange
 	}
 
-	return &rabbitMQConn{
+	return &rmqConnection{
 		exchange: exchange,
 		url:      url,
 		close:    make(chan bool),
 	}
 }
 
-func (r *rabbitMQConn) connect(secure bool, config *tls.Config) error {
+func (r *rmqConnection) connect(secure bool, config *tls.Config) error {
 	// try connect
 	if err := r.tryConnect(secure, config); err != nil {
 		return err
@@ -70,7 +74,7 @@ func (r *rabbitMQConn) connect(secure bool, config *tls.Config) error {
 	return nil
 }
 
-func (r *rabbitMQConn) reconnect(secure bool, config *tls.Config) {
+func (r *rmqConnection) reconnect(secure bool, config *tls.Config) {
 	// skip first connect
 	var connect bool
 
@@ -104,7 +108,7 @@ func (r *rabbitMQConn) reconnect(secure bool, config *tls.Config) {
 	}
 }
 
-func (r *rabbitMQConn) Connect(secure bool, config *tls.Config) error {
+func (r *rmqConnection) Connect(secure bool, config *tls.Config) error {
 	r.Lock()
 
 	// already connected
@@ -127,7 +131,7 @@ func (r *rabbitMQConn) Connect(secure bool, config *tls.Config) error {
 	return r.connect(secure, config)
 }
 
-func (r *rabbitMQConn) Close() error {
+func (r *rmqConnection) Close() error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -142,7 +146,7 @@ func (r *rabbitMQConn) Close() error {
 	return r.Connection.Close()
 }
 
-func (r *rabbitMQConn) tryConnect(secure bool, config *tls.Config) error {
+func (r *rmqConnection) tryConnect(secure bool, config *tls.Config) error {
 	var err error
 
 	if secure || config != nil || strings.HasPrefix(r.url, "amqps://") {
@@ -166,17 +170,15 @@ func (r *rabbitMQConn) tryConnect(secure bool, config *tls.Config) error {
 		return err
 	}
 
-	err = r.Channel.DeclareExchange(r.exchange)
+	err = r.Channel.DeclareExchange(r.exchange.Name, r.exchange.Durable)
 	if err != nil {
 		return err
 	}
 
-	r.ExchangeChannel, err = newRabbitChannel(r.Connection)
-
 	return err
 }
 
-func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, durableQueue bool) (*rabbitMQChannel, <-chan amqp.Delivery, error) {
+func (r *rmqConnection) Consume(queue, key string, headers amqp.Table, autoAck, durableQueue bool) (*rmqChannel, <-chan amqp.Delivery, error) {
 	consumerChannel, err := newRabbitChannel(r.Connection)
 	if err != nil {
 		return nil, nil, err
@@ -192,7 +194,7 @@ func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, d
 		return nil, nil, err
 	}
 
-	err = consumerChannel.BindQueue(queue, key, r.exchange, headers)
+	err = consumerChannel.BindQueue(queue, key, r.exchange.Name, headers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -200,6 +202,6 @@ func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, d
 	return consumerChannel, deliveries, nil
 }
 
-func (r *rabbitMQConn) Publish(exchange, key string, msg amqp.Publishing) error {
-	return r.ExchangeChannel.Publish(exchange, key, msg)
+func (r *rmqConnection) Publish(exchange, key string, msg amqp.Publishing) error {
+	return r.Channel.Publish(exchange, key, msg)
 }

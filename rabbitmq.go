@@ -10,8 +10,8 @@ import (
 	"github.com/streadway/amqp"
 )
 
-type rbroker struct {
-	conn  *rabbitMQConn
+type rmqBroker struct {
+	conn  *rmqConnection
 	addrs []string
 	opts  broker.Options
 }
@@ -19,7 +19,7 @@ type rbroker struct {
 type subscriber struct {
 	opts  broker.SubscribeOptions
 	topic string
-	ch    *rabbitMQChannel
+	ch    *rmqChannel
 }
 
 type publication struct {
@@ -56,7 +56,7 @@ func (s *subscriber) Unsubscribe() error {
 	return s.ch.Close()
 }
 
-func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
+func (r *rmqBroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
 	m := amqp.Publishing{
 		Body:    msg.Body,
 		Headers: amqp.Table{},
@@ -70,10 +70,10 @@ func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.Publ
 		return errors.New("connection is nil")
 	}
 
-	return r.conn.Publish(r.conn.exchange, topic, m)
+	return r.conn.Publish(r.conn.exchange.Name, topic, m)
 }
 
-func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker.SubscribeOption) (broker.Subscriber, error) {
+func (r *rmqBroker) Subscribe(topic string, handler broker.Handler, opts ...broker.SubscribeOption) (broker.Subscriber, error) {
 	opt := broker.SubscribeOptions{
 		AutoAck: true,
 	}
@@ -133,36 +133,36 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 	return &subscriber{ch: ch, topic: topic, opts: opt}, nil
 }
 
-func (r *rbroker) Options() broker.Options {
+func (r *rmqBroker) Options() broker.Options {
 	return r.opts
 }
 
-func (r *rbroker) String() string {
+func (r *rmqBroker) String() string {
 	return "rabbitmq"
 }
 
-func (r *rbroker) Address() string {
+func (r *rmqBroker) Address() string {
 	if len(r.addrs) > 0 {
 		return r.addrs[0]
 	}
 	return ""
 }
 
-func (r *rbroker) Init(opts ...broker.Option) error {
+func (r *rmqBroker) Init(opts ...broker.Option) error {
 	for _, o := range opts {
 		o(&r.opts)
 	}
 	return nil
 }
 
-func (r *rbroker) Connect() error {
+func (r *rmqBroker) Connect() error {
 	if r.conn == nil {
-		r.conn = newRabbitMQConn(r.getExchange(), r.opts.Addrs)
+		r.conn = newRabbitConnection(r.getExchange(), r.opts.Addrs)
 	}
 	return r.conn.Connect(r.opts.Secure, r.opts.TLSConfig)
 }
 
-func (r *rbroker) Disconnect() error {
+func (r *rmqBroker) Disconnect() error {
 	if r.conn == nil {
 		return errors.New("connection is nil")
 	}
@@ -179,15 +179,21 @@ func NewBroker(opts ...broker.Option) broker.Broker {
 		o(&options)
 	}
 
-	return &rbroker{
+	return &rmqBroker{
 		addrs: options.Addrs,
 		opts:  options,
 	}
 }
 
-func (r *rbroker) getExchange() string {
-	if e, ok := r.opts.Context.Value(exchangeKey{}).(string); ok {
-		return e
+func (r *rmqBroker) getExchange() rmqExchange {
+	var (
+		name    string
+		durable bool
+	)
+	durable, _ = r.opts.Context.Value(durableExchangeKey{}).(bool)
+	name, _ = r.opts.Context.Value(exchangeKey{}).(string)
+	return rmqExchange{
+		Name: name,
+		Durable: durable,
 	}
-	return defaultExchange
 }

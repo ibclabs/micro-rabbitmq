@@ -9,6 +9,7 @@ import (
 type durableQueueKey struct{}
 type headersKey struct{}
 type exchangeKey struct{}
+type durableExchangeKey struct{}
 
 // DurableQueue creates a durable queue when subscribing.
 func DurableQueue() broker.SubscribeOption {
@@ -37,5 +38,15 @@ func Exchange(e string) broker.Option {
 			o.Context = context.Background()
 		}
 		o.Context = context.WithValue(o.Context, exchangeKey{}, e)
+	}
+}
+
+// DurableExchange creates a durable exchange when subscribing.
+func DurableExchange() broker.Option {
+	return func(o *broker.Options) {
+		if o.Context == nil {
+			o.Context = context.Background()
+		}
+		o.Context = context.WithValue(o.Context, durableExchangeKey{}, true)
 	}
 }
