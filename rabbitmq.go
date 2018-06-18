@@ -87,6 +87,11 @@ func (r *rmqBroker) Subscribe(topic string, handler broker.Handler, opts ...brok
 		durableQueue, _ = opt.Context.Value(durableQueueKey{}).(bool)
 	}
 
+	prefetchCount := 0
+	if opt.Context != nil {
+		prefetchCount, _ = opt.Context.Value(prefetchCountKey{}).(int)
+	}
+
 	var headers map[string]interface{}
 	if opt.Context != nil {
 		if h, ok := opt.Context.Value(headersKey{}).(map[string]interface{}); ok {
@@ -104,6 +109,7 @@ func (r *rmqBroker) Subscribe(topic string, handler broker.Handler, opts ...brok
 		headers,
 		opt.AutoAck,
 		durableQueue,
+		prefetchCount,
 	)
 	if err != nil {
 		return nil, err
@@ -191,7 +197,7 @@ func (r *rmqBroker) getExchange() rmqExchange {
 		durable bool
 	)
 	durable, _ = r.opts.Context.Value(durableExchangeKey{}).(bool)
-	name, _ = r.opts.Context.Value(exchangeKey{}).(string)
+	name, _ = r.opts.Context.Value(exchangeNameKey{}).(string)
 	return rmqExchange{
 		Name: name,
 		Durable: durable,

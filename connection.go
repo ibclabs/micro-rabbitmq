@@ -170,36 +170,38 @@ func (r *rmqConnection) tryConnect(secure bool, config *tls.Config) error {
 		return err
 	}
 
-	err = r.Channel.DeclareExchange(r.exchange.Name, r.exchange.Durable)
-	if err != nil {
-		return err
-	}
-
-	return err
+	return r.Channel.DeclareExchange(r.exchange.Name, r.exchange.Durable)
 }
 
-func (r *rmqConnection) Consume(queue, key string, headers amqp.Table, autoAck, durableQueue bool) (*rmqChannel, <-chan amqp.Delivery, error) {
-	consumerChannel, err := newRabbitChannel(r.Connection)
+func (r *rmqConnection) Consume(queue, key string, headers amqp.Table, autoAck, durableQueue bool, prefetchCount int) (*rmqChannel, <-chan amqp.Delivery, error) {
+	consChannel, err := newRabbitChannel(r.Connection)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	err = consumerChannel.DeclareQueue(queue, durableQueue)
+	if prefetchCount > 0 {
+		err = consChannel.QoS(prefetchCount, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	err = consChannel.DeclareQueue(queue, durableQueue)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	deliveries, err := consumerChannel.ConsumeQueue(queue, autoAck)
+	deliveries, err := consChannel.ConsumeQueue(queue, autoAck)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	err = consumerChannel.BindQueue(queue, key, r.exchange.Name, headers)
+	err = consChannel.BindQueue(queue, key, r.exchange.Name, headers)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return consumerChannel, deliveries, nil
+	return consChannel, deliveries, nil
 }
 
 func (r *rmqConnection) Publish(exchange, key string, msg amqp.Publishing) error {

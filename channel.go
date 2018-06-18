@@ -42,6 +42,13 @@ func (r *rmqChannel) Close() error {
 	return r.channel.Close()
 }
 
+func (r *rmqChannel) QoS(prefetchCount, prefetchSize int) error {
+	if r.channel == nil {
+		return errors.New("channel is nil")
+	}
+	return r.channel.Qos(prefetchCount, prefetchSize, false)
+}
+
 func (r *rmqChannel) Publish(exchange, key string, message amqp.Publishing) error {
 	if r.channel == nil {
 		return errors.New("channel is nil")
